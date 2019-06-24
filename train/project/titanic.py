@@ -5,7 +5,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from matplotlib.font_manager import FontProperties
-
+import sklearn.preprocessing as preprocessing
+import numpy as np
+from sklearn import linear_model
 font = FontProperties(fname=r"c:\windows\fonts\simsun.ttc", size=12)
 plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
@@ -67,14 +69,14 @@ def e_marked_information(data_train):
 '''
 def set_missing_ages(df):
     age_df = df[['Age', 'Fare', 'Parch', 'SibSp', 'Pclass']]
-    known_age = age_df[age_df.Age.notnull()].as_matrix()
-    unknow_age = age_df[age_df.Age.isnull()].as_matrix()
-    y = known_age[:,0]
+    known_age = np.matrix(age_df[age_df.Age.notnull()])
+    unknow_age = np.matrix(age_df[age_df.Age.isnull()])
+    y = known_age[:, 0]
     x = known_age[:, 1:]
     rfr = RandomForestRegressor(random_state=0, n_estimators=2000, n_jobs=-1)
-    rfr.fit(x, y)
-    predictedAges = rfr.predict(unknow_age[:, 1:])
-    df.loc[(df.Age.isnull()), 'Age'] = predictedAges.size
+    rfr.fit(x, np.ravel(y, order='C'))
+    predictedAges = rfr.predict(unknow_age[:, 1::])
+    df.loc[(df.Age.isnull()), 'Age'] = predictedAges
     return df, rfr
 
 def set_cabin_type(df):
@@ -82,5 +84,60 @@ def set_cabin_type(df):
     df.loc[(df.Cabin.isnull()), 'Cabin'] = "No"
     return df
 
+def dummies_data(df):
+    dummies_Cabin = pd.get_dummies(df['Cabin'], prefix='Cabin')
+    dummies_Emarked = pd.get_dummies(df['Embarked'], prefix='Embarked')
+    dumies_Sex = pd.get_dummies(df['Sex'], prefix='Sex')
+    dummies_Pclass = pd.get_dummies(df['Pclass'], prefix='Pcalss')
+    df = pd.concat([df, dummies_Cabin, dummies_Emarked, dumies_Sex, dummies_Pclass], axis=1)
+    df.drop(['Pclass', 'Name', 'Sex', 'Ticket', 'Cabin', 'Embarked'], axis=1, inplace=True)
+    return df
+
+def scaler_preprocessing(df):
+    scaler = preprocessing.StandardScaler()
+    age_scale_param = scaler.fit(np.array(df['Age']).reshape(-1,1))
+    df['Age_scaled'] = scaler.fit_transform(np.array(df['Age']).reshape(-1,1), age_scale_param)
+    fare_scale_param = scaler.fit(np.array(df['Fare']).reshape(-1, 1))
+    df['Fare_scaled'] = scaler.fit_transform(np.array(df['Fare']).reshape(-1, 1), fare_scale_param)
+    return (df, age_scale_param, fare_scale_param)
+
+def model(df):
+    train_df = df.filter(regex='Survived|SibSp|Parch|Fare_.*|Cabin_.*|Embarked_.*|Sex_.*|Pclass_.*')
+    train_np = np.matrix(train_df)
+    y = train_np[:, 0]
+    X = train_np[:,1:]
+    clf = linear_model.LogisticRegression(C=1.0, penalty='l1', tol=1e-6)
+    clf.fit(X,np.ravel(y, order='C'))
+    return clf
+
+def predict_preprocessing(test_df, age_scaler_param, fare_scaler_param, set_missing_model):
+    test_df.loc[(data_test.Fare.isnull()), 'Fare'] = 0
+    tmp_df = test_df[['Age', 'Fare', 'Parch', 'SibSp', 'Pclass']]
+    null_age = np.matrix(tmp_df[test_df['Age'].isnull()])
+    x = null_age[:, 1:]
+    predictedAges = rfr.predict(x)
+    test_df.loc[(test_df.Age.isnull()), 'Age'] = predictedAges
+    test_df = set_cabin_type(test_df)
+    dummies_df = dummies_data(test_df)
+    scaler = preprocessing.StandardScaler()
+    dummies_df['Age_scaled'] = scaler.fit_transform(np.array(dummies_df['Age']).reshape(-1,1), age_scaler_param)
+    dummies_df['Fare_scaled'] = scaler.fit_transform(np.array(dummies_df['Fare']).reshape(-1,1), fare_scaler_param)
+    return dummies_df
+
+
 if __name__ == '__main__':
     data_train = pd.read_csv("../data/titanic/train.csv")
+    data_test = pd.read_csv("../data/titanic/test.csv")
+    (df_with_miss_age, rfr) = set_missing_ages(data_train)
+    df_with_cabin_type = set_cabin_type(df_with_miss_age)
+    dummies_df = dummies_data(df_with_cabin_type)
+    (scaled_df, age_scaler_param, fare_scaler_param) = scaler_preprocessing(dummies_df)
+    test_df = predict_preprocessing(data_test, age_scaler_param, fare_scaler_param, rfr)
+    lr = model(scaled_df)
+    test = test_df.filter(regex='SibSp|Parch|Fare_.*|Cabin_.*|Embarked_.*|Sex_.*|Pclass_.*')
+    print(pd.DataFrame({"columns": list(pd.DataFrame(test).keys()), "coef": list(lr.coef_.T)}))
+    predictions = lr.predict(test)
+    result = pd.DataFrame(
+        {'PassengerId': data_test['PassengerId'].values, 'Survived': predictions.astype(np.int32)})
+    result.to_csv("../data/titanic/submission.csv", index=False)
+

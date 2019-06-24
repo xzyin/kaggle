@@ -1,3 +1,4 @@
 # kaggle
 TODO LIST:
-* [ ] titanic 数据集处理并且做第一次提交
+* [ ] 构建模型 & review 代码
+* [ ] 分析优化方案

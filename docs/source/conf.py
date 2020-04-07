@@ -176,7 +176,6 @@ epub_title = project
 
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ['search.html']
-<<<<<<< HEAD
 
 # -- Extension configuration -------------------------------------------------
 todo_include_todos = False
@@ -185,5 +184,3 @@ html_theme = 'sphinx_rtd_theme'
 source_parsers = {
     '.md': 'recommonmark.parser.CommonMarkParser',
 }
-=======
->>>>>>> c8a131db5bf1ef12a25ed62fe8400f54b2b5a2c6
